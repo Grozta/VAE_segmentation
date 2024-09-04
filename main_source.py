@@ -378,6 +378,7 @@ if __name__ == "__main__":
     total_epoch = max_epoch//eval_epoch
     each_epoch_iter_count = len(train_loader)
     iterator = tqdm(range(total_epoch), ncols=70)
+    current_iter_count = 0
     for epoch in iterator:
         if not test_only:
             if epoch == 0 and method == "domain_adaptation":
@@ -397,6 +398,7 @@ if __name__ == "__main__":
             for idx, batch in enumerate(train_loader):
                 if idx > max_idx_in_epoch:
                     max_idx_in_epoch = idx
+                current_iter_count = current_iter_count +1
                 #optimizer.param_groups[0]['lr'] = lr3/(10**(epoch//10))
                 #for out_list in range(len(output_keys)):
 
@@ -419,7 +421,7 @@ if __name__ == "__main__":
                     '''
                     klloss = KLloss(batch)
                     dsc_loss = 1-avg_dsc(batch,source_key=label_key+'_recon', target_key=label_key+'_only',botindex=1,topindex=len(mask_index))
-                    final_loss = dsc_loss+0.00002*klloss
+                    final_loss = dsc_loss+0.0002*klloss
                     loss = []
                     display_image={}
                     loss.append(['dice_loss',dsc_loss.item()])
@@ -427,6 +429,8 @@ if __name__ == "__main__":
                     loss.append(['lr',optimizer.param_groups[0]['lr']])
                     display_image.update({label_key+'_display':batch[label_key+'_display']})
                     saver.write_display(idx+epoch*(max_idx_in_epoch+1),loss,display_image)
+                    if current_iter_count%30 == 0:
+                        saver.image_display("train_display",batch[label_key+'_only'],batch[label_key+'_recon'],batch[label_key+'_only'],current_iter_count,True)
 
                 if method =='seg_train':
                     if epoch == 0: continue
@@ -719,6 +723,8 @@ if __name__ == "__main__":
                                     val_batch[label_key+'_only'][0:1,1:2,:,:,h//2],val_batch[label_key+'_recon'][0:1,1:2,:,:,h//2]), dim=0)
                         score[val_idx] = avg_dsc(val_batch,source_key=label_key+'_recon', target_key=label_key+'_only',binary=True,botindex=1,topindex=len(mask_index)).item()
                         dsc_pancreas += score[val_idx]
+                        saver.image_display(f"val_display{epoch}",batch[label_key+'_only'],batch[label_key+'_recon'],batch[label_key+'_only'],val_idx,True)
+                        
                         
                     dsc_pancreas /= (val_idx+1)
             

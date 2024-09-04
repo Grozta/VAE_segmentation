@@ -34,6 +34,8 @@
                 "--max_epoch", "400",
                 "--pan_index","1,2,3"
             ],
+//python main_source.py vae_acdc -G 0 -b 8 --method vae_train --train_list ACDC_train --val_list ACDC_val --eval_epoch 10 --save_epoch 20 --max_epoch 400 --pan_index 1,2,3 
+//--data_root /media/grozta/SOYO/DATASET/ACDC4AVE --val_data_root /media/grozta/SOYO/DATASET/ACDC4AVE --data_path /media/grozta/SOYO/DATASET/ACDC4AVE/Multi_all.json
             "env": {
                 "CUDA_VISIBLE_DEVICES": "0",
             }
