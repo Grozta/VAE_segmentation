@@ -15,8 +15,11 @@ from torch.utils.data import DataLoader
 from torch.nn import MSELoss,L1Loss
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 import torch.nn.functional as F
+from tqdm import tqdm
+import logging
+import sys
 
-from scipy.ndimage.morphology import binary_dilation, binary_erosion
+from scipy.ndimage import binary_dilation, binary_erosion
 from utils.utils import plot_slides,BaseDataset,NumpyLoader_Multi, NumpyLoader_Multi_merge,NiiLoader, image_resize,CropResize,CopyField, ExtendSqueeze,Reshape, PadToSize, Clip, Binarize, CenterIntensities
 from utils.evaluation import binarize
 import random
@@ -65,7 +68,7 @@ softrelu = args.softrelu
 val_list = args.val_list
 torch.backends.cudnn.benchmark = True
 weight_decay = 0
-num_workers = 16
+num_workers = 8
 trainbatch = args.batch_size
 valbatch = 1
 load_prefix = args.load_prefix
@@ -75,13 +78,20 @@ load_prefix_joint = args.load_prefix_joint
 load_epoch_seg = 240
 load_epoch = 60
 prefix = args.prefix
-data_path = os.path.join('lists',args.data_path)
+#data_path = os.path.join('lists',args.data_path)
+data_path = args.data_path
 os.environ['CUDA_VISIBLE_DEVICES'] = args.GPU
-save_root_path = '3dmodel'
-save_path = '3dmodel/'+prefix
-display_path = 'tensorboard/'+prefix
-middle_path = 'domain_cache/'+prefix
-result_path = 'result/'+prefix
+save_root_path = './3dmodel/'
+save_path = './3dmodel/'+prefix
+if not os.path.exists(save_path):
+    os.mkdir(save_path)
+display_path = './3dmodel/'+prefix+'/log/'
+middle_path ='./3dmodel/'+prefix+ '/domain_cache/'
+result_path = './3dmodel/'+prefix+'/result/'
+logging.basicConfig(filename=save_path+"/log.txt", level=logging.INFO,
+                        format='[%(asctime)s.%(msecs)03d] %(message)s', datefmt='%H:%M:%S')
+logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
+logging.info(str(args))
 max_epoch = args.max_epoch
 save_epoch = args.save_epoch
 eval_epoch = args.eval_epoch
@@ -113,8 +123,8 @@ output_keys=['venous']
 
 input_phases_mask =  input_phases + [f+'_mask' for f in input_phases] + [f+'_origin' for f in input_phases]+ [f+'_lung' for f in input_phases] + [f+'_pancreas' for f in input_phases] 
 
-input_size=[256,256,256]
-patch_size=[128,128,128]
+input_size=[16,256,256]
+patch_size=[16,256,256]
 
 pad_size = [0,0,0]
 ## define trainer myself
@@ -183,8 +193,8 @@ def avg_dsc(data_dict,source_key='align_lung', target_key='source_lung',binary=F
 
 if __name__ == "__main__":
     ## dataset
-    train_data_list = filedict_from_json(data_path, train_list, eval_epoch)
-    # print(train_data_list)
+    train_data_list = filedict_from_json(data_path, train_list,eval_epoch)
+    # logging.info(train_data_list)
 
     transforms = {'train': []}
     ## define training data pipeline
@@ -208,8 +218,8 @@ if __name__ == "__main__":
     #transforms['train'].append(PadToSize(fields=input_phases, size=[1,1]+patch_size, pad_val=-1024, seg_pad_val=0,random_subpadding=True,load_mask=method=='seg_train'))
     for phase in input_phases:
         transforms['train'].append(CopyField(fields=[phase], to_field=[phase+'_origin']))
-    transforms['train'].append(Clip(fields=input_phases,new_min=-200, new_max=400))
-    transforms['train'].append(CenterIntensities(fields=input_phases,subtrahend=100, divisor=300))
+    #transforms['train'].append(Clip(fields=input_phases,new_min=-200, new_max=400))
+    #transforms['train'].append(CenterIntensities(fields=input_phases,subtrahend=100, divisor=300))
     transforms['train'].append(Reshape(fields=input_phases_mask, reshape_view=[-1]+patch_size))
 
     val_data_list = filedict_from_json(data_path, val_list)
@@ -230,20 +240,20 @@ if __name__ == "__main__":
     ###############################################################################################
     ############################ Create Datasets ##################################################
     ###############################################################################################
-    print("Loading data.")
+    logging.info("Loading data.")
     train_dataset = BaseDataset(train_data_list, transforms=transforms['train'])
     val_dataset = BaseDataset(val_data_list, transforms=transforms['val'])
     if method != "domain_adaptation":
         train_loader = DataLoader(train_dataset, batch_size=trainbatch, shuffle=True, num_workers=num_workers, drop_last=True, pin_memory=True)
     else:
         train_loader = DataLoader(train_dataset, batch_size=trainbatch, shuffle=False, num_workers=num_workers, drop_last=True, pin_memory=True)
-        print("domain!")
+        logging.info("domain!")
     val_loader = DataLoader(val_dataset, batch_size=valbatch, shuffle=False, num_workers=num_workers, pin_memory=True)
     if save_more_reference:
         train_loader_2 = DataLoader(train_dataset, batch_size=valbatch, shuffle=False, num_workers=num_workers, pin_memory=True)
 
     ## model build and load
-    print("Building model.")
+    logging.info("Building model.")
     models = importlib.import_module('joint_model')
     # vm_model = importlib.import_module('models.' + 'voxelmorph3D_joint')
     if method=='vae_train':
@@ -296,7 +306,7 @@ if __name__ == "__main__":
         
 
     
-    print("Loading prefix.")
+    logging.info("Loading prefix.")
     if load_prefix:
         register_model_path = os.path.join(save_root_path, load_prefix, checkpoint_name)
         if method=="seg_train":
@@ -361,8 +371,9 @@ if __name__ == "__main__":
     MSE_Loss = MSELoss()
     
     ## training loop 
-    print("Start training")
-    for epoch in range(max_epoch // eval_epoch):
+    logging.info("Start training")
+    iterator = tqdm(range(max_epoch//eval_epoch), ncols=70)
+    for epoch in iterator:
         if not test_only:
             if epoch == 0 and method == "domain_adaptation":
                 if not os.path.exists(middle_path): 
@@ -503,7 +514,7 @@ if __name__ == "__main__":
                     # # with open(filename, 'rb') as f:
                     # #     tt = np.load(f)
                     # batch[label_key+'_try'] = tt
-                    # print(avg_dsc(batch, source_key=label_key+'_pred', target_key=label_key+'_try',botindex=1,topindex=len(mask_index),return_mean=True))
+                    # logging.info(avg_dsc(batch, source_key=label_key+'_pred', target_key=label_key+'_try',botindex=1,topindex=len(mask_index),return_mean=True))
 
                     if mode != 0 and epoch % mode == 0:
                         filename = os.path.join(middle_path, f'{idx}_pred.pt')
@@ -659,34 +670,34 @@ if __name__ == "__main__":
 
                 final_loss.backward()
                 optimizer.step()
-                # print statistics
+                # logging.info statistics
                 if method =='vae_train':
-                    print('[%3d, %3d] loss: %.4f, %.4f' %
+                    logging.info('[%3d, %3d] loss: %.4f, %.4f' %
                             ((epoch+1)*eval_epoch, idx + 1, dsc_loss.item(),klloss.item()))
                 if method =='seg_train':    
-                    print('[%3d, %3d] loss: %.4f' %
+                    logging.info('[%3d, %3d] loss: %.4f' %
                             ((epoch+1)*eval_epoch, idx + 1, dsc_loss.item()))
                 if method =='joint_train':    
-                    print('[%3d, %3d] loss: %.4f, %.4f' %
+                    logging.info('[%3d, %3d] loss: %.4f, %.4f' %
                             ((epoch+1)*eval_epoch, idx + 1, recon_loss.item(), dsc_loss.item()))
                 if method == 'domain_adaptation':
-                    print('[%3d, %3d] loss: %.4f, %.4f, %.4f' %
+                    logging.info('[%3d, %3d] loss: %.4f, %.4f, %.4f' %
                             ((epoch+1)*eval_epoch, idx + 1, recon_loss.item(), dsc_loss_fake.item(), dsc_loss.item()))
                 if method =='embed_train':    
-                    print('[%3d, %3d] loss: %.4f, %.4f, %.4f, %.4f, %.4f' %
+                    logging.info('[%3d, %3d] loss: %.4f, %.4f, %.4f, %.4f, %.4f' %
                             ((epoch+1)*eval_epoch, idx + 1, dsc_loss1.item(),dsc_loss2.item(),mse_loss.item(),inpaint_loss.item(),recon_loss.item()))
                 if method =='refine_vae':    
-                    print('[%3d, %3d] loss: %.4f, %.4f, %.4f' %
+                    logging.info('[%3d, %3d] loss: %.4f, %.4f, %.4f' %
                             ((epoch+1)*eval_epoch, idx + 1, recon_loss.item(),inpaint_loss.item(),init_loss.item()))
                 if method =='sep_joint_train':   
-                    print('[%3d, %3d] loss: %.4f, %.4f' %
+                    logging.info('[%3d, %3d] loss: %.4f, %.4f' %
                             ((epoch+1)*eval_epoch, idx + 1, (1-torch.mean(recon_loss)).item(),(1-torch.mean(dsc_loss)).item()))          
         
-        print("Ready validation")
+        logging.info("Ready validation")
         # epoch 4 weird
         # validation
         if (epoch+1) % 1 == 0 or test_only:
-            print("Start evaluation")
+            logging.info("Start evaluation")
             model.eval()
             score = {}
             if method =='vae_train':
@@ -817,18 +828,17 @@ if __name__ == "__main__":
             loss.append(['val_result', dsc_pancreas])
             saver.write_display((epoch+1)*(max_idx_in_epoch+1), loss, display_image, force_write=True)
 
-            print('epoch %d validation result: %f, best result %f.' % (epoch+1, dsc_pancreas, best_result))
+            logging.info('epoch %d validation result: %f, best result %f.' % (epoch+1, dsc_pancreas, best_result))
             if test_only: break
             model.train()
             if method=='joint_train' or method=='sep_joint_train' or method=='domain_adaptation':
                 model.Vae.eval()
         
         ## save model
-        if (epoch+1) % (save_epoch // eval_epoch) == 0:
+        if (epoch+1) % (save_epoch//eval_epoch) == 0:
             if not os.path.exists(save_path):
-                save_path = '3dmodel/'+prefix
                 os.mkdir(save_path)
-            print('saving model')
+            logging.info('saving model')
             torch.save({
                         'epoch': (epoch+1)*eval_epoch,
                         'model_state_dict': model.state_dict(),
@@ -848,6 +858,6 @@ if __name__ == "__main__":
                         'optimizer_state_dict': optimizer.state_dict()
                         }, os.path.join(save_path,'generator_model_epoch'+str(epoch+1)+'.ckpt'))
             '''
-    print('Finished Training')
+    logging.info('Finished Training')
 
 

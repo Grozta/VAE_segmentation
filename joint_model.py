@@ -204,7 +204,7 @@ class SConv3d(nn.Conv3d):
 class VAE(torch.nn.Module):
 
     # [16,32,64,128,256,512]
-    def __init__(self, n_channels, n_class, norm_type=2, n_fmaps=[8,16,32,64,128,256],dim=1024,soft=False):
+    def __init__(self, n_channels, n_class, norm_type=2, n_fmaps=[8,16,32,64,128,256],dim=1024,soft=False,linear_dim = 32768):
         super().__init__()
         #self.SConv3d = SConv3d(1,n_fmaps[0],3,padding=1,bias=True)
         self.in_block = Conv(n_class, n_fmaps[0],norm_type=norm_type,soft=False)
@@ -213,9 +213,9 @@ class VAE(torch.nn.Module):
         self.down3 = Down(n_fmaps[2], n_fmaps[3],norm_type=norm_type,soft=False)
         self.down4 = Down(n_fmaps[3], n_fmaps[4],norm_type=norm_type,soft=False)
         self.down5 = Down(n_fmaps[4], n_fmaps[5],norm_type=norm_type,soft=False)
-        self.fc_mean = torch.nn.Linear(16384,dim)
-        self.fc_std = torch.nn.Linear(16384,dim)
-        self.fc2 = torch.nn.Linear(dim,16384)
+        self.fc_mean = torch.nn.Linear(linear_dim,dim)
+        self.fc_std = torch.nn.Linear(linear_dim,dim)
+        self.fc2 = torch.nn.Linear(dim,linear_dim)
         self.up1 = Up(n_fmaps[5],n_fmaps[4],norm_type=norm_type,soft=False)
         self.up2 = Up(n_fmaps[4],n_fmaps[3],norm_type=norm_type,soft=False)
         self.up3 = Up(n_fmaps[3],n_fmaps[2],norm_type=norm_type,soft=False)
@@ -224,6 +224,7 @@ class VAE(torch.nn.Module):
         self.out_block = torch.nn.Conv3d(n_fmaps[0], n_class, 3, padding=1)
         self.final = nn.Softmax(dim=1)
         self.n_class = n_class
+        self.Linear_dim = linear_dim
     def forward(self, x,if_random=False,scale=1,mid_input=False,dropout=0.0):
         #'pred_only','pred_recon',if_random=False
         #x = data_dict[in_key]
@@ -237,8 +238,8 @@ class VAE(torch.nn.Module):
             x = self.down2(x)
             x = self.down3(x)
             x = self.down4(x)
-            x = self.down5(x)
-            x = x.view(x.size(0),16384)
+            #x = self.down5(x)
+            x = x.view(x.size(0),self.Linear_dim)
             x_mean = self.fc_mean(x)
             x_std = nn.ReLU()(self.fc_std(x))
             #data_dict['mean'] = x_mean
@@ -250,10 +251,10 @@ class VAE(torch.nn.Module):
                 x = self.fc2(x_mean)
         else:
             x = self.fc2(x)
-        x = x.view(x.size(0),256,4,4,4)
+        x = x.view(x.size(0),128,1,16,16)
         
-        x = self.up1(x)
-        if dropout: x = torch.nn.functional.dropout(x, p=dropout, training=True)
+        #x = self.up1(x)
+        #if dropout: x = torch.nn.functional.dropout(x, p=dropout, training=True)
         x = self.up2(x)
         if dropout: x = torch.nn.functional.dropout(x, p=dropout, training=True)
         x = self.up3(x)
