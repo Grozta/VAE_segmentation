@@ -3,6 +3,7 @@ import torchvision
 from tensorboardX import SummaryWriter
 import numpy as np
 from PIL import Image
+import logging
 
 class Saver():
     def __init__(self, display_dir,display_freq):
@@ -24,4 +25,4 @@ class Saver():
                     self.writer.add_image(m, image_dis, total_it)
             for l in loss:
                 self.writer.add_scalar(l[0], l[1], total_it)
-                print(l[0], l[1], total_it)
+                logging.info(l[0], l[1], total_it)

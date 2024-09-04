@@ -57,6 +57,7 @@ parser.add_argument("--save_eval_result", help="save_more_reference", action='st
 parser.add_argument("--no_aug", help="no_aug", action='store_true')
 parser.add_argument("--adam", help="no_aug", action='store_true')
 parser.add_argument("--mode", help="mode", type=int, default=0)
+parser.add_argument('--tag',type=str, default='v99', help='tag of experiment')
 args = parser.parse_args()
 
 data_root = args.data_root
@@ -82,14 +83,16 @@ prefix = args.prefix
 data_path = args.data_path
 os.environ['CUDA_VISIBLE_DEVICES'] = args.GPU
 save_root_path = './3dmodel/'
-save_path = './3dmodel/'+prefix
+save_path = os.path.join('./3dmodel/',prefix,args.tag) 
+if args.tag == "v99" and os.path.exists(save_path):
+    shutil.rmtree(save_path)
 if not os.path.exists(save_path):
-    os.mkdir(save_path)
-display_path = './3dmodel/'+prefix+'/log/'
-middle_path ='./3dmodel/'+prefix+ '/domain_cache/'
-result_path = './3dmodel/'+prefix+'/result/'
+    os.makedirs(save_path)
+display_path = os.path.join(save_path,'log')
+middle_path =os.path.join(save_path,'domain_cache')
+result_path = os.path.join(save_path,'result')
 logging.basicConfig(filename=save_path+"/log.txt", level=logging.INFO,
-                        format='[%(asctime)s.%(msecs)03d] %(message)s', datefmt='%H:%M:%S')
+                    format='[%(asctime)s.%(msecs)03d] %(message)s', datefmt='%H:%M:%S')
 logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
 logging.info(str(args))
 max_epoch = args.max_epoch
@@ -372,7 +375,9 @@ if __name__ == "__main__":
     
     ## training loop 
     logging.info("Start training")
-    iterator = tqdm(range(max_epoch//eval_epoch), ncols=70)
+    total_epoch = max_epoch//eval_epoch
+    each_epoch_iter_count = len(train_loader)
+    iterator = tqdm(range(total_epoch), ncols=70)
     for epoch in iterator:
         if not test_only:
             if epoch == 0 and method == "domain_adaptation":
@@ -672,8 +677,8 @@ if __name__ == "__main__":
                 optimizer.step()
                 # logging.info statistics
                 if method =='vae_train':
-                    logging.info('[%3d, %3d] loss: %.4f, %.4f' %
-                            ((epoch+1)*eval_epoch, idx + 1, dsc_loss.item(),klloss.item()))
+                    logging.info('[%3d/%3d, %3d/%3d] loss: %.4f, %.4f' %
+                            ((epoch+1),total_epoch, idx + 1,each_epoch_iter_count, dsc_loss.item(),klloss.item()))
                 if method =='seg_train':    
                     logging.info('[%3d, %3d] loss: %.4f' %
                             ((epoch+1)*eval_epoch, idx + 1, dsc_loss.item()))
